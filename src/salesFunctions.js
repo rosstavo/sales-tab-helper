@@ -12,23 +12,25 @@ export function compositeSalesScore(salesDataRow) {
     const isCoreStock = toStringSafe(salesDataRow?.Core);
     const isPaperback = toStringSafe(salesDataRow?.Bg);
     const isCustomerOrder = toStringSafe(salesDataRow?.C) === "*";
+    const pubDate = toStringSafe(salesDataRow?.["Pub Date"]);
 
     let score = 0;
 
     const weights = {
         // Tuned for typical ranges: QoH usually <= 3, weekly sales usually < 5.
         // Recent sales should dominate; any non-zero stock/on-order should be disfavoured.
-        qtyOnHand: -1,
+        qtyOnHand: -0.5,
         qtyOnOrder: -0.5,
-        qtySold: 0.05,
+        qtySold: 0.1,
         soldToday: 0,
-        soldThisWeek: 0.9,
-        soldThisMonth: 0.6,
-        soldThisYear: 0.02,
-        lastSale: 0.05,
+        soldThisWeek: 0.4,
+        soldThisMonth: 0.4,
+        soldThisYear: 0.2,
+        lastSale: 0.3,
         lastDelivery: 0.05,
         isCoreStock: 0.2,
         isPaperback: 0.2,
+        pubDate: 0.5,
     };
 
     const penalties = {
@@ -56,9 +58,11 @@ export function compositeSalesScore(salesDataRow) {
     const now = new Date();
     const lastSaleDate = parseDatePrefix(lastSale);
     const lastDeliveryDate = parseDatePrefix(lastDelivery);
+    const pubDateParsed = parseDatePrefix(pubDate);
 
     score += weights.lastSale * recencyScore(now, lastSaleDate);
     score += weights.lastDelivery * recencyScore(now, lastDeliveryDate);
+    score += weights.pubDate * recencyScore(now, pubDateParsed, 5);
 
     if (isCoreStock === "Y") score += weights.isCoreStock;
     if (isPaperback === "P") score += weights.isPaperback;
@@ -85,10 +89,14 @@ function parseDatePrefix(value) {
     return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function recencyScore(now, date) {
+function recencyScore(now, date, yearsHalfLife = 1) {
     if (!date) return 0;
+
     const ageYears =
         (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24 * 365);
-    const normalized = 1 - Math.min(Math.max(ageYears, 0), 1);
+
+    const normalized =
+        yearsHalfLife - Math.min(Math.max(ageYears, 0), yearsHalfLife);
+
     return normalized;
 }
